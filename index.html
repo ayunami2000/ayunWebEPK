@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<title>ayunWebEPK</title>
+		<script type="text/javascript" src="jszip.min.js"></script>
+		<script type="text/javascript" src="pako_deflate.min.js"></script>
+		<script type="text/javascript" src="sha1.min.js"></script>
+		<link rel="preconnect" href="https://fonts.googleapis.com"/>
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+		<link href="https://fonts.googleapis.com/css2?family=Nunito&display=swap" rel="stylesheet"/>
+		<style>
+			a:not([href]) {
+				display: none;
+			}
+			*, ::file-selector-button {
+				font-family: 'Nunito', sans-serif;
+			}
+			body {
+				background-color: #111111;
+				color: #dddddd;
+			}
+			input[disabled] {
+				opacity: 0.8;
+			}
+			::file-selector-button, progress {
+				background-color: #343434;
+				color: #eeeeee;
+				border: 1px solid #eeeeee;
+				border-radius: 4px;
+			}
+			a, input {
+				color: #dddddd;
+			}
+			progress {
+				height: 1em;
+				-webkit-appearance: none;
+        		-moz-appearance: none;
+        		appearance: none;
+			}
+			progress[value="0"][max="1"] {
+				display: none;
+			}
+			::-moz-progress-bar {
+				background-color: #eeeeee;
+			}
+			::-webkit-progress-value {
+				background-color: #eeeeee;
+			}
+			::-webkit-progress-bar {
+				background-color: #343434;
+				border-radius: 4px;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>ayunWebEPK</h1>
+		<p>Compile EPK files in your browser!</p>
+		Select .ZIP archive: <input type="file" onchange="selectFile(this);"/>
+		<br/>
+		Select resources folder: <input type="file" onchange="selectFile(this);" directory webkitdirectory/>
+		<br/>
+		<progress value="0" max="1"></progress>
+		<a download="assets.epk">Download your EPK!</a>
+		<script>
+			const downloadLink = document.querySelector('a');
+			const progressBar = document.querySelector('progress');
+			const fileElems = document.querySelectorAll('input[type=file]');
+			function concatTypedArrays(a, b) {
+				const c = new (a.constructor)(a.length + b.length);
+				c.set(a, 0);
+				c.set(b, a.length);
+				return c;
+			}
+
+			const textEncoder = new TextEncoder();
+			function generateIntArray(num) {
+				return Uint8Array.of((num >>> 24) & 0xFF, (num >>> 16) & 0xFF, (num >>> 8) & 0xFF, num & 0xFF);
+			}
+			function generateShortArray(num) {
+				return Uint8Array.of((num >>> 8) & 0xFF, num & 0xFF);
+			}
+			function generateUTF(str) {
+				return concatTypedArrays(generateShortArray(str.length), textEncoder.encode(str));
+			}
+			let comment = '# eaglercraft package file - generated with ayunWebEPK by ayunami2000';
+
+			let baseEPK = textEncoder.encode('EAGPKG!!');
+
+			baseEPK = concatTypedArrays(baseEPK, generateUTF(comment));
+
+			let currentEPK = null;
+
+			function selectFile(fileElem) {
+				downloadLink.removeAttribute('href');
+				fileElems.forEach(elem => elem.disabled = true);
+				if (fileElem.files.length == 1) {
+					const zipFile = fileElem.files[0];
+					var reader = new FileReader();
+					reader.onload = function(e) {
+						const zip = new JSZip();
+						zip.loadAsync(e.target.result).then(function(zip) {
+							progressBar.max = Object.keys(zip.files).length;
+							let i = 0;
+							for (let fileName in zip.files) {
+								if (fileName.endsWith('/')) {
+									progressBar.value = i++;
+									if (i == progressBar.max) {
+										wrapItUp(fileElem);
+									}
+									continue;
+								}
+								zip.files[fileName].async('uint8array').then(function(data) {
+									processFile(fileName, data);
+									progressBar.value = i++;
+									if (i == progressBar.max) {
+										wrapItUp(fileElem);
+									}
+								});
+							}
+						});
+					};
+					reader.readAsArrayBuffer(zipFile);
+				} else if (fileElem.files.length > 1) {
+					progressBar.max = fileElem.files.length;
+					let i = 0;
+					for (let file of fileElem.files) {
+						var reader = new FileReader();
+						reader.onload = function(e) {
+							processFile(file.webkitRelativePath.slice(file.webkitRelativePath.indexOf('/') + 1), new Uint8Array(e.target.result));
+							progressBar.value = i++;
+							if (i == progressBar.max) {
+								wrapItUp(fileElem);
+							}
+						};
+						reader.readAsArrayBuffer(file);
+					}
+				} else {
+					fileElems.forEach(elem => elem.removeAttribute('disabled'));
+				}
+			}
+
+			function processFile(name, file) {
+				currentEPK = currentEPK == null ? generateUTF('<file>') : concatTypedArrays(currentEPK, generateUTF('<file>'));
+				currentEPK = concatTypedArrays(currentEPK, generateUTF(name));
+				currentEPK = concatTypedArrays(currentEPK, new Uint8Array(sha1.arrayBuffer(file.buffer)));
+				currentEPK = concatTypedArrays(currentEPK, generateIntArray(file.length));
+				currentEPK = concatTypedArrays(currentEPK, file);
+				currentEPK = concatTypedArrays(currentEPK, generateUTF('</file>'));
+			}
+			
+			function wrapItUp(fileElem) {
+				currentEPK = concatTypedArrays(currentEPK, generateUTF(' end'));
+				currentEPK = concatTypedArrays(baseEPK, new Uint8Array(pako.deflate(currentEPK, { level: 9 })));
+				const blob = new Blob([ currentEPK ], { type: 'application/octet-stream' });
+				downloadLink.href = window.URL.createObjectURL(blob);
+				currentEPK = null;
+				fileElem.value = '';
+				progressBar.value = 0;
+				progressBar.max = 1;
+				fileElems.forEach(elem => elem.removeAttribute('disabled'));
+			}
+		</script>
+	</body>
+</html>
