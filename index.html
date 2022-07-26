@@ -69,11 +69,26 @@
 			const downloadLink = document.querySelector('a');
 			const progressBar = document.querySelector('progress');
 			const fileElems = document.querySelectorAll('input[type=file]');
+
 			function concatTypedArrays(a, b) {
 				const c = new (a.constructor)(a.length + b.length);
 				c.set(a, 0);
 				c.set(b, a.length);
 				return c;
+			}
+
+			// https://stackoverflow.com/a/68703218/6917520
+
+			function prefix(words) {
+				// check border cases size 1 array and empty first word)
+				if (!words[0] || words.length ==  1) return words[0] || "";
+				let i = 0;
+				// while all words have the same character at position i, increment i
+				while(words[0][i] && words.every(w => w[i] === words[0][i]))
+					i++;
+				
+				// prefix is the substring from the beginning to the last successfully checked i
+				return words[0].substr(0, i);
 			}
 
 			const textEncoder = new TextEncoder();
@@ -99,11 +114,12 @@
 				fileElems.forEach(elem => elem.disabled = true);
 				if (fileElem.files.length == 1) {
 					const zipFile = fileElem.files[0];
-					var reader = new FileReader();
+					const reader = new FileReader();
 					reader.onload = function(e) {
 						const zip = new JSZip();
 						zip.loadAsync(e.target.result).then(function(zip) {
 							progressBar.max = Object.keys(zip.files).length;
+							const stripFolder = prefix(Object.keys(zip.files));
 							let i = 0;
 							for (let fileName in zip.files) {
 								if (fileName.endsWith('/')) {
@@ -114,7 +130,7 @@
 									continue;
 								}
 								zip.files[fileName].async('uint8array').then(function(data) {
-									processFile(fileName, data);
+									processFile(stripFolder.length == 0 ? fileName : fileName.slice(fileName.indexOf(stripFolder) + stripFolder.length), data);
 									progressBar.value = i++;
 									if (i == progressBar.max) {
 										wrapItUp(fileElem);
@@ -126,11 +142,13 @@
 					reader.readAsArrayBuffer(zipFile);
 				} else if (fileElem.files.length > 1) {
 					progressBar.max = fileElem.files.length;
+					const stripFolder = prefix(Object.values(fileElem.files).map(file => file.webkitRelativePath));
 					let i = 0;
 					for (let file of fileElem.files) {
-						var reader = new FileReader();
+						const fileName = file.webkitRelativePath;
+						const reader = new FileReader();
 						reader.onload = function(e) {
-							processFile(file.webkitRelativePath.slice(file.webkitRelativePath.indexOf('/') + 1), new Uint8Array(e.target.result));
+							processFile(stripFolder.length == 0 ? fileName : fileName.slice(fileName.indexOf(stripFolder) + stripFolder.length), new Uint8Array(e.target.result));
 							progressBar.value = i++;
 							if (i == progressBar.max) {
 								wrapItUp(fileElem);
