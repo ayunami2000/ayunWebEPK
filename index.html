@@ -57,9 +57,11 @@
 	<body>
 		<h1>ayunWebEPK</h1>
 		<p>Compile EPK files in your browser!</p>
-		Select .ZIP archive: <input type="file" onchange="selectFile(this);"/>
-		<br/>
 		Select resources folder: <input type="file" onchange="selectFile(this);" directory webkitdirectory/>
+		<br/>
+		<i>~or~</i>
+		<br/>
+		Select .ZIP archive of resources: <input type="file" onchange="selectFile(this);" accept=".zip"/>
 		<br/>
 		<progress value="0" max="1"></progress>
 		<a download="assets.epk">Download your EPK!</a>
