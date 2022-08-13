@@ -25,17 +25,63 @@
 			input[disabled] {
 				opacity: 0.8;
 			}
-			::file-selector-button, progress {
+			input[type=checkbox] {
+				-webkit-appearance: initial;
+        		-moz-appearance: initial;
+        		appearance: initial;
+				width: 1.5em;
+				height: 1.5em;
+				margin: 0;
+			}
+			input[type=checkbox]:checked {
+				background-color: #eeeeee;
+			}
+			input[type=checkbox]:before {
+				content: ':>';
+				text-align: center;
+				color: #dddddd;
+				margin-left: 0.3em;
+			}
+			input[type=checkbox]:checked:before {
+				color: #343434;
+			}
+			input[type=checkbox]:after {
+				content: 'No';
+				color: #dddddd;
+				margin-left: 0.6em;
+			}
+			input[type=checkbox]:checked:after {
+				content: 'Yes';
+			}
+			@supports (-webkit-touch-callout: none) or (background: -webkit-named-image(i)) {
+				input[type=checkbox]:after {
+					content: 'no';
+				}
+				input[type=checkbox]:checked:after {
+					content: 'yes';
+				}
+			}
+			@supports (-moz-appearance: none) {
+				input[type=checkbox]:after {
+					content: 'No.';
+				}
+				input[type=checkbox]:checked:after {
+					content: 'Yes.';
+				}
+			}
+			::file-selector-button, progress, input[type=checkbox] {
 				background-color: #343434;
 				color: #eeeeee;
 				border: 1px solid #eeeeee;
 				border-radius: 4px;
 			}
-			a, input {
+			a, input[type=file] {
 				color: #dddddd;
 			}
 			progress {
 				height: 1em;
+			}
+			progress, ::-webkit-file-upload-button {
 				-webkit-appearance: none;
         		-moz-appearance: none;
         		appearance: none;
@@ -58,6 +104,8 @@
 	<body>
 		<h1>ayunWebEPK</h1>
 		<p>Compile EPK files in your browser!</p>
+		Use legacy format: <input type="checkbox"/>
+		<br/>
 		Select resources folder: <input type="file" onchange="selectFile(this);" directory webkitdirectory/>
 		<br/>
 		<i>~or~</i>
@@ -65,11 +113,39 @@
 		Select .ZIP archive of resources: <input type="file" onchange="selectFile(this);" accept=".zip"/>
 		<br/>
 		<progress value="0" max="1"></progress>
-		<a download="assets.epk">Download your EPK!</a>
+		<a download="my-cool.epk">Download your EPK!</a>
 		<script>
+
+			// https://stackoverflow.com/a/18639903/6917520
+
+			const crc32 = (function() {
+				let table = new Uint32Array(256);
+
+				for (let i = 256; i--;) {
+					let tmp = i;
+
+					for (let k = 8; k--;) {
+						tmp = tmp & 1 ? 3988292384 ^ tmp >>> 1 : tmp >>> 1;
+					}
+
+					table[i] = tmp;
+				}
+
+				return function(data) {
+					let crc = -1;
+
+					for (let i = 0, l = data.length; i < l; i++) {
+						crc = crc >>> 8 ^ table[crc & 255 ^ data[i]];
+					}
+
+					return (crc ^ -1) >>> 0;
+				};
+			})();
+
 			const downloadLink = document.querySelector('a');
 			const progressBar = document.querySelector('progress');
 			const fileElems = document.querySelectorAll('input[type=file]');
+			const oldBox = document.querySelector('input[type=checkbox]');
 
 			function concatTypedArrays(a, b) {
 				const c = new (a.constructor)(a.length + b.length);
@@ -93,6 +169,9 @@
 			}
 
 			const textEncoder = new TextEncoder();
+			function generateLongArray(num) {
+				return Uint8Array.of((num >>> 56) & 0xFF, (num >>> 48) & 0xFF, (num >>> 40) & 0xFF, (num >>> 32) & 0xFF, (num >>> 24) & 0xFF, (num >>> 16) & 0xFF, (num >>> 8) & 0xFF, num & 0xFF);
+			}
 			function generateIntArray(num) {
 				return Uint8Array.of((num >>> 24) & 0xFF, (num >>> 16) & 0xFF, (num >>> 8) & 0xFF, num & 0xFF);
 			}
@@ -102,17 +181,37 @@
 			function generateUTF(str) {
 				return concatTypedArrays(generateShortArray(str.length), textEncoder.encode(str));
 			}
+			function generateUTFByte(str) {
+				return concatTypedArrays(Uint8Array.of(str.length), textEncoder.encode(str));
+			}
 			let comment = '# eaglercraft package file - generated with ayunWebEPK by ayunami2000';
+
+			let commentNew = '\n\n # Eagler EPK v2.0 (c) $$YEAR$$ Calder Young\n # generated with ayunWebEPK by ayunami2000';
 
 			let baseEPK = textEncoder.encode('EAGPKG!!');
 
 			baseEPK = concatTypedArrays(baseEPK, generateUTF(comment));
+
+			let baseEPKNew = textEncoder.encode('EAGPKG$$');
+			
+			baseEPKNew = concatTypedArrays(baseEPKNew, generateUTFByte('ver2.0'));
+
+			baseEPKNew = concatTypedArrays(baseEPKNew, generateUTFByte('my-cool.epk'));
 
 			let currentEPK = null;
 
 			function selectFile(fileElem) {
 				downloadLink.removeAttribute('href');
 				fileElems.forEach(elem => elem.disabled = true);
+				oldBox.disabled = true;
+				if (!oldBox.checked) {
+					currentEPK = textEncoder.encode('HEAD');
+					currentEPK = concatTypedArrays(currentEPK, generateUTFByte('file-type'));
+					const fileType = 'epk/resources';
+					currentEPK = concatTypedArrays(currentEPK, generateIntArray(fileType.length));
+					currentEPK = concatTypedArrays(currentEPK, textEncoder.encode(fileType));
+					currentEPK = concatTypedArrays(currentEPK, Uint8Array.of(62));
+				}
 				if (fileElem.files.length == 1) {
 					const zipFile = fileElem.files[0];
 					const reader = new FileReader();
@@ -158,22 +257,44 @@
 						reader.readAsArrayBuffer(file);
 					}
 				} else {
+					currentEPK = null;
 					fileElems.forEach(elem => elem.removeAttribute('disabled'));
+					oldBox.removeAttribute('disabled');
 				}
 			}
 
 			function processFile(name, file) {
-				currentEPK = currentEPK == null ? generateUTF('<file>') : concatTypedArrays(currentEPK, generateUTF('<file>'));
-				currentEPK = concatTypedArrays(currentEPK, generateUTF(name));
-				currentEPK = concatTypedArrays(currentEPK, new Uint8Array(sha1.arrayBuffer(file.buffer)));
-				currentEPK = concatTypedArrays(currentEPK, generateIntArray(file.length));
-				currentEPK = concatTypedArrays(currentEPK, file);
-				currentEPK = concatTypedArrays(currentEPK, generateUTF('</file>'));
+				if (oldBox.checked) {
+					currentEPK = currentEPK == null ? generateUTF('<file>') : concatTypedArrays(currentEPK, generateUTF('<file>'));
+					currentEPK = concatTypedArrays(currentEPK, generateUTF(name));
+					currentEPK = concatTypedArrays(currentEPK, new Uint8Array(sha1.arrayBuffer(file.buffer)));
+					currentEPK = concatTypedArrays(currentEPK, generateIntArray(file.byteLength));
+					currentEPK = concatTypedArrays(currentEPK, file);
+					currentEPK = concatTypedArrays(currentEPK, generateUTF('</file>'));
+				} else {
+					currentEPK = concatTypedArrays(currentEPK, textEncoder.encode('FILE'));
+					currentEPK = concatTypedArrays(currentEPK, generateUTFByte(name));
+					currentEPK = concatTypedArrays(currentEPK, generateIntArray(file.byteLength + 5));
+					currentEPK = concatTypedArrays(currentEPK, generateIntArray(crc32(file)));
+					currentEPK = concatTypedArrays(currentEPK, file);
+					currentEPK = concatTypedArrays(currentEPK, textEncoder.encode(':>'));
+				}
 			}
 			
 			function wrapItUp(fileElem) {
-				currentEPK = concatTypedArrays(currentEPK, generateUTF(' end'));
-				currentEPK = concatTypedArrays(baseEPK, new Uint8Array(pako.deflate(currentEPK, { level: 9 })));
+				if (oldBox.checked) {
+					currentEPK = concatTypedArrays(currentEPK, generateUTF(' end'));
+					currentEPK = concatTypedArrays(baseEPK, new Uint8Array(pako.deflate(currentEPK, { level: 9 })));
+				} else {
+					let currBaseEPK = baseEPKNew;
+					currBaseEPK = concatTypedArrays(currBaseEPK, generateUTF(commentNew.replace('$$YEAR$$', new Date().getFullYear())));
+					currBaseEPK = concatTypedArrays(currBaseEPK, generateLongArray(Date.now()));
+					currBaseEPK = concatTypedArrays(currBaseEPK, generateIntArray(progressBar.max + 1));
+					currBaseEPK = concatTypedArrays(currBaseEPK, Uint8Array.of(90));
+					currentEPK = concatTypedArrays(currentEPK, textEncoder.encode('END$'));
+					currentEPK = concatTypedArrays(currBaseEPK, new Uint8Array(pako.deflate(currentEPK, { level: 9 })));
+					currentEPK = concatTypedArrays(currentEPK, textEncoder.encode(':::YEE:>'));
+				}
 				const blob = new Blob([ currentEPK ], { type: 'application/octet-stream' });
 				downloadLink.href = window.URL.createObjectURL(blob);
 				currentEPK = null;
@@ -181,6 +302,7 @@
 				progressBar.value = 0;
 				progressBar.max = 1;
 				fileElems.forEach(elem => elem.removeAttribute('disabled'));
+				oldBox.removeAttribute('disabled');
 			}
 		</script>
 	</body>
