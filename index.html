@@ -102,6 +102,7 @@
 		</style>
 	</head>
 	<body>
+		<sub><a href="decompile.html">Want to decompile one instead?</a></sub>
 		<h1>ayunWebEPK</h1>
 		<p>Compile EPK files in your browser!</p>
 		Use legacy format: <input type="checkbox"/>
@@ -142,7 +143,7 @@
 				};
 			})();
 
-			const downloadLink = document.querySelector('a');
+			const downloadLink = document.querySelectorAll('a')[1];
 			const progressBar = document.querySelector('progress');
 			const fileElems = document.querySelectorAll('input[type=file]');
 			const oldBox = document.querySelector('input[type=checkbox]');

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<script async src="https://arc.io/widget.min.js#HEPCFa3K"></script>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<title>ayunWebEPK</title>
+		<script type="text/javascript" src="jszip.min.js"></script>
+		<script type="text/javascript" src="pako_inflate.min.js"></script>
+		<script type="text/javascript" src="ayunEPKDecompiler.js"></script>
+		<link rel="preconnect" href="https://fonts.googleapis.com"/>
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+		<link href="https://fonts.googleapis.com/css2?family=Nunito&display=swap" rel="stylesheet"/>
+		<style>
+			a:not([href]) {
+				display: none;
+			}
+			*, ::file-selector-button {
+				font-family: 'Nunito', sans-serif;
+			}
+			body {
+				background-color: #111111;
+				color: #dddddd;
+			}
+			input[disabled] {
+				opacity: 0.8;
+			}
+			::file-selector-button, progress {
+				background-color: #343434;
+				color: #eeeeee;
+				border: 1px solid #eeeeee;
+				border-radius: 4px;
+			}
+			a, input[type=file] {
+				color: #dddddd;
+			}
+			progress {
+				height: 1em;
+			}
+			progress, ::-webkit-file-upload-button {
+				-webkit-appearance: none;
+        		-moz-appearance: none;
+        		appearance: none;
+			}
+			progress[value="0"][max="1"] {
+				display: none;
+			}
+			::-moz-progress-bar {
+				background-color: #eeeeee;
+			}
+			::-webkit-progress-value {
+				background-color: #eeeeee;
+			}
+			::-webkit-progress-bar {
+				background-color: #343434;
+				border-radius: 4px;
+			}
+		</style>
+	</head>
+	<body>
+		<sub><a href="..">Want to compile one instead?</a></sub>
+		<h1>ayunWebEPK</h1>
+		<p>Decompile EPK files in your browser!</p>
+		Select .EPK file: <input type="file" onchange="selectFile(this);" accept=".epk"/>
+		<br/>
+		<progress value="0" max="1"></progress>
+		<a download="my-cool.zip">Download as a ZIP!</a>
+		<script>
+			const downloadLink = document.querySelectorAll('a')[1];
+			const progressBar = document.querySelector('progress');
+
+			function selectFile(fileElem) {
+				downloadLink.removeAttribute('href');
+				fileElem.disabled = true;
+				if (fileElem.files.length > 0) {
+					const epkFile = fileElem.files[0];
+					const reader = new FileReader();
+					reader.onload = function(e) {
+						window.decompileEPK()(e.target.result).then(function(fileList) {
+							if (fileList == null) {
+								alert("Invalid EPK!");
+								fileElem.removeAttribute('disabled');
+								return;
+							}
+							const zip = new JSZip();
+							progressBar.max = fileList.length;
+							for (const file of fileList) {
+								progressBar.value++;
+								if (file.type != 'FILE') continue;
+								zip.file(file.name, file.data); // todo: check if it'll accept a blob as input
+							}
+							
+							zip.generateAsync({type: 'blob'}).then(function(content) {
+								downloadLink.href = window.URL.createObjectURL(content);
+								fileElem.value = '';
+								progressBar.value = 0;
+								progressBar.max = 1;
+								fileElem.removeAttribute('disabled')
+							});
+						});
+					};
+					reader.readAsArrayBuffer(epkFile);
+				} else {
+					fileElem.removeAttribute('disabled');
+				}
+			}
+		</script>
+	</body>
+</html>
