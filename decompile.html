@@ -87,7 +87,7 @@
 							for (const file of fileList) {
 								progressBar.value++;
 								if (file.type != 'FILE') continue;
-								zip.file(file.name, file.data); // todo: check if it'll accept a blob as input
+								zip.file(file.name, file.data);
 							}
 							
 							zip.generateAsync({type: 'blob'}).then(function(content) {
