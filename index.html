@@ -8,6 +8,7 @@
 		<script type="text/javascript" src="jszip.min.js"></script>
 		<script type="text/javascript" src="pako_deflate.min.js"></script>
 		<script type="text/javascript" src="sha1.min.js"></script>
+		<script type="text/javascript" src="ayunEPKCompiler.js"></script>
 		<link rel="preconnect" href="https://fonts.googleapis.com"/>
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 		<link href="https://fonts.googleapis.com/css2?family=Nunito&display=swap" rel="stylesheet"/>
@@ -103,6 +104,8 @@
 	</head>
 	<body>
 		<sub><a href="decompile.html">Want to decompile one instead?</a></sub>
+		<br/>
+		<sub><a href="builder.html">Want to create one instead?</a></sub>
 		<h1>ayunWebEPK</h1>
 		<p>Compile EPK files in your browser!</p>
 		Use legacy format: <input type="checkbox"/>
@@ -116,44 +119,10 @@
 		<progress value="0" max="1"></progress>
 		<a download="my-cool.epk">Download your EPK!</a>
 		<script>
-
-			// https://stackoverflow.com/a/18639903/6917520
-
-			const crc32 = (function() {
-				let table = new Uint32Array(256);
-
-				for (let i = 256; i--;) {
-					let tmp = i;
-
-					for (let k = 8; k--;) {
-						tmp = tmp & 1 ? 3988292384 ^ tmp >>> 1 : tmp >>> 1;
-					}
-
-					table[i] = tmp;
-				}
-
-				return function(data) {
-					let crc = -1;
-
-					for (let i = 0, l = data.length; i < l; i++) {
-						crc = crc >>> 8 ^ table[crc & 255 ^ data[i]];
-					}
-
-					return (crc ^ -1) >>> 0;
-				};
-			})();
-
-			const downloadLink = document.querySelectorAll('a')[1];
+			const downloadLink = document.querySelectorAll('a')[2];
 			const progressBar = document.querySelector('progress');
 			const fileElems = document.querySelectorAll('input[type=file]');
 			const oldBox = document.querySelector('input[type=checkbox]');
-
-			function concatTypedArrays(a, b) {
-				const c = new (a.constructor)(a.length + b.length);
-				c.set(a, 0);
-				c.set(b, a.length);
-				return c;
-			}
 
 			// https://stackoverflow.com/a/68703218/6917520
 
@@ -169,50 +138,11 @@
 				return words[0].substr(0, i);
 			}
 
-			const textEncoder = new TextEncoder();
-			function generateLongArray(num) {
-				return Uint8Array.of((num >>> 56) & 0xFF, (num >>> 48) & 0xFF, (num >>> 40) & 0xFF, (num >>> 32) & 0xFF, (num >>> 24) & 0xFF, (num >>> 16) & 0xFF, (num >>> 8) & 0xFF, num & 0xFF);
-			}
-			function generateIntArray(num) {
-				return Uint8Array.of((num >>> 24) & 0xFF, (num >>> 16) & 0xFF, (num >>> 8) & 0xFF, num & 0xFF);
-			}
-			function generateShortArray(num) {
-				return Uint8Array.of((num >>> 8) & 0xFF, num & 0xFF);
-			}
-			function generateUTF(str) {
-				return concatTypedArrays(generateShortArray(str.length), textEncoder.encode(str));
-			}
-			function generateUTFByte(str) {
-				return concatTypedArrays(Uint8Array.of(str.length), textEncoder.encode(str));
-			}
-			let comment = '# eaglercraft package file - generated with ayunWebEPK by ayunami2000';
-
-			let commentNew = '\n\n # Eagler EPK v2.0 (c) $$YEAR$$ Calder Young\n # generated with ayunWebEPK by ayunami2000';
-
-			let baseEPK = textEncoder.encode('EAGPKG!!');
-
-			baseEPK = concatTypedArrays(baseEPK, generateUTF(comment));
-
-			let baseEPKNew = textEncoder.encode('EAGPKG$$');
-			
-			baseEPKNew = concatTypedArrays(baseEPKNew, generateUTFByte('ver2.0'));
-
-			baseEPKNew = concatTypedArrays(baseEPKNew, generateUTFByte('my-cool.epk'));
-
-			let currentEPK = null;
-
 			function selectFile(fileElem) {
 				downloadLink.removeAttribute('href');
 				fileElems.forEach(elem => elem.disabled = true);
 				oldBox.disabled = true;
-				if (!oldBox.checked) {
-					currentEPK = textEncoder.encode('HEAD');
-					currentEPK = concatTypedArrays(currentEPK, generateUTFByte('file-type'));
-					const fileType = 'epk/resources';
-					currentEPK = concatTypedArrays(currentEPK, generateIntArray(fileType.length));
-					currentEPK = concatTypedArrays(currentEPK, textEncoder.encode(fileType));
-					currentEPK = concatTypedArrays(currentEPK, Uint8Array.of(62));
-				}
+				const fileArr = [];
 				if (fileElem.files.length == 1) {
 					const zipFile = fileElem.files[0];
 					const reader = new FileReader();
@@ -226,15 +156,19 @@
 								if (fileName.endsWith('/')) {
 									progressBar.value = i++;
 									if (i == progressBar.max) {
-										wrapItUp(fileElem);
+										finishIt(fileElem, fileArr, oldBox.checked);
 									}
 									continue;
 								}
-								zip.files[fileName].async('uint8array').then(function(data) {
-									processFile(stripFolder.length == 0 ? fileName : fileName.slice(fileName.indexOf(stripFolder) + stripFolder.length), data);
+								zip.files[fileName].async('blob').then(function(data) {
+									fileArr.push({
+										type: 'FILE',
+										name: stripFolder.length == 0 ? fileName : fileName.slice(fileName.indexOf(stripFolder) + stripFolder.length),
+										data: data
+									});
 									progressBar.value = i++;
 									if (i == progressBar.max) {
-										wrapItUp(fileElem);
+										finishIt(fileElem, fileArr, oldBox.checked);
 									}
 								});
 							}
@@ -247,63 +181,35 @@
 					let i = 0;
 					for (let file of fileElem.files) {
 						const fileName = file.webkitRelativePath;
-						const reader = new FileReader();
-						reader.onload = function(e) {
-							processFile(stripFolder.length == 0 ? fileName : fileName.slice(fileName.indexOf(stripFolder) + stripFolder.length), new Uint8Array(e.target.result));
-							progressBar.value = i++;
-							if (i == progressBar.max) {
-								wrapItUp(fileElem);
-							}
-						};
-						reader.readAsArrayBuffer(file);
+						fileArr.push({
+							type: 'FILE',
+							name: stripFolder.length == 0 ? fileName : fileName.slice(fileName.indexOf(stripFolder) + stripFolder.length),
+							data: file
+						});
+						progressBar.value = i++;
+						if (i == progressBar.max) {
+							finishIt(fileElem, fileArr, oldBox.checked);
+						}
 					}
 				} else {
-					currentEPK = null;
 					fileElems.forEach(elem => elem.removeAttribute('disabled'));
 					oldBox.removeAttribute('disabled');
 				}
 			}
-
-			function processFile(name, file) {
-				if (oldBox.checked) {
-					currentEPK = currentEPK == null ? generateUTF('<file>') : concatTypedArrays(currentEPK, generateUTF('<file>'));
-					currentEPK = concatTypedArrays(currentEPK, generateUTF(name));
-					currentEPK = concatTypedArrays(currentEPK, new Uint8Array(sha1.arrayBuffer(file.buffer)));
-					currentEPK = concatTypedArrays(currentEPK, generateIntArray(file.byteLength));
-					currentEPK = concatTypedArrays(currentEPK, file);
-					currentEPK = concatTypedArrays(currentEPK, generateUTF('</file>'));
-				} else {
-					currentEPK = concatTypedArrays(currentEPK, textEncoder.encode('FILE'));
-					currentEPK = concatTypedArrays(currentEPK, generateUTFByte(name));
-					currentEPK = concatTypedArrays(currentEPK, generateIntArray(file.byteLength + 5));
-					currentEPK = concatTypedArrays(currentEPK, generateIntArray(crc32(file)));
-					currentEPK = concatTypedArrays(currentEPK, file);
-					currentEPK = concatTypedArrays(currentEPK, textEncoder.encode(':>'));
-				}
-			}
 			
-			function wrapItUp(fileElem) {
-				if (oldBox.checked) {
-					currentEPK = concatTypedArrays(currentEPK, generateUTF(' end'));
-					currentEPK = concatTypedArrays(baseEPK, new Uint8Array(pako.deflate(currentEPK, { level: 9 })));
-				} else {
-					let currBaseEPK = baseEPKNew;
-					currBaseEPK = concatTypedArrays(currBaseEPK, generateUTF(commentNew.replace('$$YEAR$$', new Date().getFullYear())));
-					currBaseEPK = concatTypedArrays(currBaseEPK, generateLongArray(Date.now()));
-					currBaseEPK = concatTypedArrays(currBaseEPK, generateIntArray(progressBar.max + 1));
-					currBaseEPK = concatTypedArrays(currBaseEPK, Uint8Array.of(90));
-					currentEPK = concatTypedArrays(currentEPK, textEncoder.encode('END$'));
-					currentEPK = concatTypedArrays(currBaseEPK, new Uint8Array(pako.deflate(currentEPK, { level: 9 })));
-					currentEPK = concatTypedArrays(currentEPK, textEncoder.encode(':::YEE:>'));
-				}
-				const blob = new Blob([ currentEPK ], { type: 'application/octet-stream' });
-				downloadLink.href = window.URL.createObjectURL(blob);
-				currentEPK = null;
-				fileElem.value = '';
+			function finishIt(fileElem, fileArr, old) {
 				progressBar.value = 0;
-				progressBar.max = 1;
-				fileElems.forEach(elem => elem.removeAttribute('disabled'));
-				oldBox.removeAttribute('disabled');
+				window.compileEPK()(fileArr, old, function() {
+					progressBar.value++;
+				}).then(blob => {
+					downloadLink.href = window.URL.createObjectURL(blob);
+					currentEPK = null;
+					fileElem.value = '';
+					progressBar.value = 0;
+					progressBar.max = 1;
+					fileElems.forEach(elem => elem.removeAttribute('disabled'));
+					oldBox.removeAttribute('disabled');
+				});
 			}
 		</script>
 	</body>

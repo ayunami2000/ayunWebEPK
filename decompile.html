@@ -59,6 +59,8 @@
 	</head>
 	<body>
 		<sub><a href=".">Want to compile one instead?</a></sub>
+		<br/>
+		<sub><a href="builder.html">Want to create one instead?</a></sub>
 		<h1>ayunWebEPK</h1>
 		<p>Decompile EPK files in your browser!</p>
 		Select .EPK file: <input type="file" onchange="selectFile(this);" accept=".epk"/>
@@ -66,7 +68,7 @@
 		<progress value="0" max="1"></progress>
 		<a download="my-cool.zip">Download as a ZIP!</a>
 		<script>
-			const downloadLink = document.querySelectorAll('a')[1];
+			const downloadLink = document.querySelectorAll('a')[2];
 			const progressBar = document.querySelector('progress');
 
 			function selectFile(fileElem) {
@@ -76,14 +78,23 @@
 					const epkFile = fileElem.files[0];
 					const reader = new FileReader();
 					reader.onload = function(e) {
-						window.decompileEPK()(e.target.result).then(function(fileList) {
+						progressBar.value = 0;
+						progressBar.max = 1;
+						window.decompileEPK()(e.target.result, function() {
+							progressBar.max++;
+							progressBar.value++;
+						}).then(function(fileList) {
 							if (fileList == null) {
-								alert("Invalid EPK!");
+								alert('Invalid EPK!');
+								fileElem.value = '';
+								progressBar.value = 0;
+								progressBar.max = 1;
 								fileElem.removeAttribute('disabled');
 								return;
 							}
 							const zip = new JSZip();
 							progressBar.max = fileList.length;
+							progressBar.value = 0;
 							for (const file of fileList) {
 								progressBar.value++;
 								if (file.type != 'FILE') continue;
@@ -95,7 +106,7 @@
 								fileElem.value = '';
 								progressBar.value = 0;
 								progressBar.max = 1;
-								fileElem.removeAttribute('disabled')
+								fileElem.removeAttribute('disabled');
 							});
 						});
 					};

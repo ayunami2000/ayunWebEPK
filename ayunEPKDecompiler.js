@@ -1,7 +1,9 @@
-window.decompileEPK = function () {
+window.decompileEPK = function() {
 	let currentOffset = 0;
 
 	let numFiles = 0;
+
+	let onfile = function() {};
 
 	function detectOldHeader(epkData) {
 		const oldHeader = "EAGPKG!!";
@@ -124,7 +126,10 @@ window.decompileEPK = function () {
 		while ((file = readFileOld(data)) != null) {
 			if (file == -1) return null;
 			files.push(file);
+			onfile();
 		}
+
+		onfile = function() {};
 
 		return files;
 	}
@@ -162,7 +167,10 @@ window.decompileEPK = function () {
 		while ((file = readFileNew(data)) != null) {
 			if (file == -1) return null;
 			files.push(file);
+			onfile();
 		}
+
+		onfile = function() {};
 
 		return files;
 	}
@@ -220,7 +228,11 @@ window.decompileEPK = function () {
 		};
 	}
 
-	return async function(rawBuffer) {
+	return async function(rawBuffer, fileev) {
+		if (fileev != null) {
+			onfile = fileev;
+		}
+
 		let epkData = new Uint8Array(rawBuffer);
 
 		if (detectOldHeader(epkData)) {

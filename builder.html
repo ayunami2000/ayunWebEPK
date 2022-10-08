@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<script async src="https://arc.io/widget.min.js#HEPCFa3K"></script>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<title>ayunWebEPK</title>
+		<script type="text/javascript" src="jszip.min.js"></script>
+		<script type="text/javascript" src="pako.min.js"></script>
+		<script type="text/javascript" src="sha1.min.js"></script>
+		<script type="text/javascript" src="ayunEPKDecompiler.js"></script>
+		<script type="text/javascript" src="ayunEPKCompiler.js"></script>
+		<link rel="preconnect" href="https://fonts.googleapis.com"/>
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+		<link href="https://fonts.googleapis.com/css2?family=Nunito&display=swap" rel="stylesheet"/>
+		<style>
+			a:not([href]) {
+				display: none;
+			}
+			*, ::file-selector-button {
+				font-family: 'Nunito', sans-serif;
+			}
+			body {
+				background-color: #111111;
+				color: #dddddd;
+			}
+			input[disabled], button[disabled] {
+				opacity: 0.8;
+			}
+			input[type=checkbox] {
+				-webkit-appearance: initial;
+        		-moz-appearance: initial;
+        		appearance: initial;
+				width: 1.5em;
+				height: 1.5em;
+				margin: 0;
+			}
+			input[type=checkbox]:checked {
+				background-color: #eeeeee;
+			}
+			input[type=checkbox]:before {
+				content: ':>';
+				text-align: center;
+				color: #dddddd;
+				margin-left: 0.3em;
+			}
+			input[type=checkbox]:checked:before {
+				color: #343434;
+			}
+			input[type=checkbox]:after {
+				content: 'No';
+				color: #dddddd;
+				margin-left: 0.6em;
+			}
+			input[type=checkbox]:checked:after {
+				content: 'Yes';
+			}
+			@supports (-webkit-touch-callout: none) or (background: -webkit-named-image(i)) {
+				input[type=checkbox]:after {
+					content: 'no';
+				}
+				input[type=checkbox]:checked:after {
+					content: 'yes';
+				}
+			}
+			@supports (-moz-appearance: none) {
+				input[type=checkbox]:after {
+					content: 'No.';
+				}
+				input[type=checkbox]:checked:after {
+					content: 'Yes.';
+				}
+			}
+			::file-selector-button, progress, input[type=checkbox], button, select, input[type=text] {
+				background-color: #343434;
+				color: #eeeeee;
+				border: 1px solid #eeeeee;
+				border-radius: 4px;
+			}
+			a, input[type=file] {
+				color: #dddddd;
+			}
+			progress {
+				height: 1em;
+			}
+			progress, ::-webkit-file-upload-button {
+				-webkit-appearance: none;
+        		-moz-appearance: none;
+        		appearance: none;
+			}
+			progress[value="0"][max="1"] {
+				display: none;
+			}
+			::-moz-progress-bar {
+				background-color: #eeeeee;
+			}
+			::-webkit-progress-value {
+				background-color: #eeeeee;
+			}
+			::-webkit-progress-bar {
+				background-color: #343434;
+				border-radius: 4px;
+			}
+			#editor.modei pre, #editor.modei audio, #editor.modea pre, #editor.modea img, #editor.modet img, #editor.modet audio, #editor.model {
+				display: none;
+			}
+		</style>
+	</head>
+	<body>
+		<sub><a href=".">Want to compile one instead?</a></sub>
+		<br/>
+		<sub><a href="decompile.html">Want to decompile one instead?</a></sub>
+		<h1>ayunWebEPK</h1>
+		<p>Customize EPK files in your browser!</p>
+		Select base .EPK: <input type="file" onchange="selectFile(this);" accept=".epk"/>
+		<br/>
+		Compile to legacy format: <input type="checkbox"/>
+		<br/>
+		<button onclick="compileIt(document.querySelector('input[type=file]'));" disabled>Compile it!</button>
+		<br/>
+		<br/>
+		<progress value="0" max="1"></progress>
+		<a download="my-cool.epk">Download your EPK!</a>
+		<div id="editor" class="model">
+			<input type="text" placeholder="Search or enter file name..."/>
+			<select></select>
+			<button onclick="createFile(this.previousElementSibling.previousElementSibling.value);" disabled>Create file...</button>
+			<button onclick="deleteCurrentFile();">Delete file...</button>
+			<br/>
+			<h3></h3>
+			Change this file: <input type="file" onchange="changeFile(this);"/>
+			<br/>
+			<img/>
+			<audio controls></audio>
+			<pre></pre>
+		</div>
+		<script>
+			const downloadLink = document.querySelectorAll('a')[2];
+			const progressBar = document.querySelector('progress');
+			const oldBox = document.querySelector('input[type=checkbox]');
+			const compileBtn = document.querySelector('button');
+			const editor = document.getElementById('editor');
+			const dropdown = document.querySelector('select');
+			const editorName = editor.querySelector('h3');
+			const editorImage = editor.querySelector('img');
+			const editorAudio = editor.querySelector('audio');
+			const editorText = editor.querySelector('pre');
+			const editorSearch = editor.querySelector('input[type=text]');
+
+			editorSearch.value = '';
+
+			// https://stackoverflow.com/a/68703218/6917520
+
+			function prefix(words) {
+				// check border cases size 1 array and empty first word)
+				if (!words[0] || words.length ==  1) return words[0] || "";
+				let i = 0;
+				// while all words have the same character at position i, increment i
+				while(words[0][i] && words.every(w => w[i] === words[0][i]))
+					i++;
+				
+				// prefix is the substring from the beginning to the last successfully checked i
+				return words[0].substr(0, i);
+			}
+
+			let epkFiles = [];
+			let selectedFile = 0;
+
+			function selectFile(fileElem) {
+				epkFiles.length = 0;
+				downloadLink.removeAttribute('href');
+				fileElem.disabled = true;
+				if (fileElem.files.length > 0) {
+					const epkFile = fileElem.files[0];
+					const reader = new FileReader();
+					reader.onload = function(e) {
+						progressBar.value = 0;
+						progressBar.max = 1;
+						window.decompileEPK()(e.target.result, function() {
+							progressBar.max++;
+							progressBar.value++;
+						}).then(function(fileList) {
+							if (fileList == null) {
+								alert('Invalid EPK!');
+								fileElem.value = '';
+								progressBar.value = 0;
+								progressBar.max = 1;
+								fileElem.removeAttribute('disabled');
+								return;
+							}
+							fileElem.value = '';
+							progressBar.value = 0;
+							progressBar.max = 1;
+							fileElem.removeAttribute('disabled');
+							epkFiles = fileList;
+							editor.className = '';
+							refreshDropdown();
+							compileBtn.removeAttribute('disabled');
+						});
+					};
+					reader.readAsArrayBuffer(epkFile);
+				} else {
+					fileElem.removeAttribute('disabled');
+				}
+			}
+			
+			function compileIt(fileElem) {
+				compileBtn.disabled = true;
+				fileElem.disabled = true;
+				oldBox.disabled = true;
+				progressBar.value = 0;
+				progressBar.max = epkFiles.length;
+				window.compileEPK()(epkFiles, oldBox.checked, function() {
+					progressBar.value++;
+				}).then(blob => {
+					if (blob == null) {
+						alert('Invalid EPK!');
+						progressBar.value = 0;
+						progressBar.max = 1;
+						oldBox.removeAttribute('disabled');
+						fileElem.removeAttribute('disabled');
+						return;
+					}
+					downloadLink.href = window.URL.createObjectURL(blob);
+					progressBar.value = 0;
+					progressBar.max = 1;
+					oldBox.removeAttribute('disabled');
+					fileElem.removeAttribute('disabled');
+					compileBtn.removeAttribute('disabled');
+				});
+			}
+
+			function filterDropdown(str) {
+				str = str.trim().toLowerCase();
+				const queries = str.split(' ');
+				const opts = [...dropdown.querySelectorAll('option')];
+				let oldValue = dropdown.value;
+				let selectedOne = false;
+				for (const opt of opts) {
+					opt.selected = false;
+					opt.hidden = true;
+					const lowerOptText = opt.text.toLowerCase();
+					if (lowerOptText == str) {
+						if (selectedOne) {
+							selectedOne.selected = false;
+						}
+						selectedOne = opt;
+						opt.selected = true;
+						opt.hidden = false;
+						continue;
+					}
+					for (const query of queries) {
+						if (lowerOptText.includes(query)) {
+							if (!selectedOne) {
+								selectedOne = opt;
+								opt.selected = true;
+							}
+							opt.hidden = false;
+						}
+					}
+				}
+				if (dropdown.value != oldValue) {
+					dropdown.onchange();
+				}
+			}
+
+			dropdown.onchange = function() {
+				selectedFile = dropdown.value;
+				const fileItem = epkFiles[selectedFile];
+				editorName.innerText = fileItem.name;
+				const lowerName = fileItem.name.toLowerCase();
+				if (lowerName.endsWith('.mp3')) {
+					editor.className = 'modea';
+					editorAudio.src = window.URL.createObjectURL(fileItem.data);
+				} else if (lowerName.endsWith('.png')) {
+					editor.className = 'modei';
+					editorImage.src = window.URL.createObjectURL(fileItem.data);
+				} else {
+					editor.className = 'modet';
+					fileItem.data.text().then(t => {
+						editorText.innerText = t;
+					});
+				}
+			};
+
+			function refreshDropdown() {
+				dropdown.innerHTML = '';
+				for (const fileInd in epkFiles) {
+					if (epkFiles[fileInd].type != 'FILE') {
+						continue;
+					}
+					dropdown.add(new Option(epkFiles[fileInd].name, fileInd, false, fileInd == 0));
+				}
+				dropdown.onchange();
+				editorSearch.oninput();
+			}
+
+			function deleteCurrentFile() {
+				epkFiles.splice(selectedFile, 1);
+				refreshDropdown();
+			}
+
+			function createFile(name) {
+				epkFiles.push({
+					type: 'FILE',
+					name: name,
+					data: new Blob([])
+				});
+				refreshDropdown();
+			}
+
+			function changeFile(fileElem) {
+				if (fileElem.files.length > 0) {
+					epkFiles[selectedFile].data = fileElem.files[0];
+					fileElem.value = '';
+					dropdown.onchange();
+				}
+			}
+
+			editorSearch.oninput = function() {
+				filterDropdown(editorSearch.value);
+				if (this.value != '' && epkFiles[this.nextElementSibling.value].name.toLowerCase() != this.value.toLowerCase()) {
+					editorSearch.nextElementSibling.nextElementSibling.removeAttribute('disabled');
+				} else {
+					editorSearch.nextElementSibling.nextElementSibling.disabled = true;
+				}
+			};
+		</script>
+	</body>
+</html>
