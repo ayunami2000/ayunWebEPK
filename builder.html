@@ -269,7 +269,7 @@
 				const fileItem = epkFiles[selectedFile];
 				editorName.innerText = fileItem.name;
 				const lowerName = fileItem.name.toLowerCase();
-				if (lowerName.endsWith('.mp3')) {
+				if (lowerName.endsWith('.mp3') || lowerName.endsWith('.ogg')) {
 					editor.className = 'modea';
 					editorAudio.src = window.URL.createObjectURL(fileItem.data);
 				} else if (lowerName.endsWith('.png')) {
